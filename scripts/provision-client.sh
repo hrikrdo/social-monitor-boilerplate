@@ -223,7 +223,14 @@ else:
         f.write("\n" + new_entry)
     print("  Appended (no catchall found).")
 PYEOF
-  systemctl restart cloudflared || warn "cloudflared restart returned non-zero"
+  # Try common service names — different VPS setups use different names
+  if systemctl list-units --type=service --no-pager | grep -q cloudflared-mission; then
+    systemctl restart cloudflared-mission || warn "cloudflared-mission restart returned non-zero"
+  elif systemctl list-units --type=service --no-pager | grep -q cloudflared; then
+    systemctl restart cloudflared || warn "cloudflared restart returned non-zero"
+  else
+    warn "No cloudflared service unit found — restart manually"
+  fi
 fi
 
 # ---------- Step 8: Cloudflare DNS CNAME ----------
