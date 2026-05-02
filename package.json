@@ -1,0 +1,29 @@
+{
+  "name": "social-monitor-boilerplate",
+  "version": "1.0.0",
+  "description": "Multi-tenant Social Media & Ads monitoring dashboard. Sync Meta Ads, Instagram, Facebook + AI insights with Claude.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "social-media",
+    "meta-ads",
+    "dashboard",
+    "instagram",
+    "facebook",
+    "claude-ai",
+    "analytics"
+  ],
+  "author": "hrikrdo",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "node-cron": "^3.0.3"
+  }
+}

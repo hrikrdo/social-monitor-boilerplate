@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Social Monitor · Cargando…</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=8">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script>
+    // Apply theme before render to prevent flash
+    (function() {
+      var saved = localStorage.getItem('monitor-theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- ============================================================
+       TOP NAV
+       ============================================================ -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-left">
+        <img src="/logo.jpg" alt="Logo" class="logo">
+        <div>
+          <h1>Social Monitor</h1>
+          <p class="subtitle">Social Media &amp; Ads Monitor</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="sync-info">
+          <span class="sync-dot"></span>
+          <span class="sync-label">Última sync:</span>
+          <span id="lastSync">--</span>
+        </div>
+        <button id="btnTheme" class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema claro/oscuro">
+          <span class="icon-light">☾</span>
+          <span class="icon-dark">☀</span>
+        </button>
+        <button id="btnSync" class="btn-sync" onclick="triggerSync()">
+          <span class="sync-icon">↻</span> Sincronizar
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       TABS
+       ============================================================ -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="sentimiento">Sentimiento</button>
+    <button class="tab" data-tab="ads">Ads Performance</button>
+    <button class="tab" data-tab="comparativo">Comparativo de Anuncios</button>
+    <button class="tab" data-tab="insights">Insights de Contenido</button>
+  </nav>
+
+  <!-- ============================================================
+       TAB: OVERVIEW
+       ============================================================ -->
+  <section id="tab-overview" class="tab-content active">
+
+    <!-- Hero with auto-narrative -->
+    <div class="hero">
+      <div class="hero-meta" id="overview-period">Resumen · cargando...</div>
+      <h2 id="overview-narrative">Cargando datos del periodo...</h2>
+      <p class="lede" id="overview-lede">Sincronizamos cada hora desde Meta Ads, Instagram y Facebook. Los insights de IA se generan diariamente a las 6:00 AM.</p>
+    </div>
+
+    <!-- KPI grid: Money flow -->
+    <div class="kpi-grid kpi-4">
+      <div class="kpi-card">
+        <span class="kpi-label">Inversión Total <span class="info-icon" title="Total invertido en todas las campañas activas en Meta Ads.">i</span></span>
+        <span class="kpi-value" id="kpi-spend">$0.00</span>
+        <span class="kpi-sub" id="kpi-spend-sub">--</span>
+        <div class="sparkline-wrap"><canvas id="spark-spend"></canvas></div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Alcance Total <span class="info-icon" title="Personas únicas que han visto los anuncios al menos una vez.">i</span></span>
+        <span class="kpi-value" id="kpi-reach">0</span>
+        <span class="kpi-sub" id="kpi-reach-sub">--</span>
+        <div class="sparkline-wrap"><canvas id="spark-reach"></canvas></div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Clics en Enlace <span class="info-icon" title="Clics salientes que dirigen al usuario a agendar cita o visitar la web.">i</span></span>
+        <span class="kpi-value" id="kpi-clicks">0</span>
+        <span class="kpi-sub" id="kpi-clicks-sub">--</span>
+        <div class="sparkline-wrap"><canvas id="spark-clicks"></canvas></div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Costo por Clic <span class="info-icon" title="Costo promedio por cada clic en el enlace. CPC = Inversión / Clics.">i</span></span>
+        <span class="kpi-value" id="kpi-cpc">$0.00</span>
+        <span class="kpi-sub" id="kpi-cpc-sub">--</span>
+        <div class="sparkline-wrap"><canvas id="spark-cpc"></canvas></div>
+      </div>
+    </div>
+
+    <!-- KPI grid: Voice of Customer -->
+    <div class="kpi-grid kpi-4">
+      <div class="kpi-card">
+        <span class="kpi-label">Score de Aceptación <span class="info-icon" title="% de comentarios positivos sobre el total. Verde 60%+ buena, Amarillo 40-60% mixta, Rojo &lt;40% baja.">i</span></span>
+        <span class="kpi-value" id="kpi-acceptance">--%</span>
+        <div class="acceptance-bar"><div class="acceptance-fill" id="acceptance-fill"></div></div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Total Comentarios <span class="info-icon" title="Comentarios recopilados de Instagram y Facebook.">i</span></span>
+        <span class="kpi-value" id="kpi-comments">0</span>
+        <span class="kpi-sub" id="kpi-comments-sub">analizados con IA</span>
+      </div>
+      <div class="kpi-card kpi-card-accent">
+        <span class="kpi-label">Interés de Compra <span class="info-icon" title="Comentarios que preguntan precio, cita, ubicación o muestran intención de compra. Métrica clave para validar demanda.">i</span></span>
+        <span class="kpi-value" id="kpi-purchase-overview">0%</span>
+        <span class="kpi-sub" id="kpi-purchase-count">0 comentarios con intención</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Mejor Anuncio <span class="info-icon" title="Creativo con mayor número de clics en enlace.">i</span></span>
+        <span class="kpi-value kpi-value-sm" id="kpi-best-ad">--</span>
+        <span class="kpi-sub" id="kpi-best-ad-detail">--</span>
+      </div>
+    </div>
+
+    <!-- Conversion Funnel -->
+    <div class="funnel-card">
+      <div class="funnel-header">
+        <h3>Embudo de conversión</h3>
+        <p>Cómo las impresiones se transforman en interés real de compra</p>
+      </div>
+      <div class="funnel-grid" id="funnel-grid">
+        <div class="funnel-step">
+          <div class="funnel-step-label">Impresiones</div>
+          <div class="funnel-step-value" id="funnel-impressions">0</div>
+          <div class="funnel-step-rate">Total servidas</div>
+          <div class="funnel-arrow"></div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-step-label">Alcance</div>
+          <div class="funnel-step-value" id="funnel-reach">0</div>
+          <div class="funnel-step-rate"><strong id="funnel-reach-rate">0%</strong> personas únicas</div>
+          <div class="funnel-arrow"></div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-step-label">Clics en enlace</div>
+          <div class="funnel-step-value" id="funnel-clicks">0</div>
+          <div class="funnel-step-rate"><strong id="funnel-ctr">0%</strong> CTR</div>
+          <div class="funnel-arrow"></div>
+        </div>
+        <div class="funnel-step highlight">
+          <div class="funnel-step-label">Interés de compra</div>
+          <div class="funnel-step-value" id="funnel-intent">0</div>
+          <div class="funnel-step-rate"><strong id="funnel-intent-rate">0%</strong> de comentarios</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signature card: Best Ad highlight -->
+    <section class="signature-card" id="best-ad-signature" style="display:none">
+      <div class="signature-card-grid">
+        <div>
+          <div class="eyebrow">★ Mejor anuncio del periodo</div>
+          <h3 id="best-ad-headline">Cargando...</h3>
+          <p id="best-ad-narrative">El creativo con mejor performance en el último periodo. Vale la pena escalar inversión y testear variantes con la misma estructura.</p>
+        </div>
+        <div class="signature-stat-block">
+          <div class="signature-stat-label">Clics en enlace</div>
+          <div class="signature-stat-value" id="best-ad-clicks">--</div>
+          <div class="signature-stat-detail" id="best-ad-clicks-vs">--</div>
+          <div class="signature-stat-divider"></div>
+          <div class="signature-stat-label">Inversión</div>
+          <div class="signature-stat-value" id="best-ad-spend" style="font-size:24px">--</div>
+          <div class="signature-stat-detail" id="best-ad-cpc-detail">--</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts row -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Inversión, alcance y clics</h3>
+        <p class="chart-subtitle">Evolución diaria de las campañas</p>
+        <div class="chart-canvas-wrap"><canvas id="chartSpendReach"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Sentimiento general</h3>
+        <p class="chart-subtitle">Distribución de los comentarios analizados</p>
+        <div class="chart-canvas-wrap"><canvas id="chartSentimentOverview"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Action items (cream callout) -->
+    <section class="cream-callout" id="action-items-section" style="display:none">
+      <div class="eyebrow">★ Acciones recomendadas</div>
+      <h3 id="action-items-title">Tres cosas que requieren tu atención</h3>
+      <p class="lede" id="action-items-lede">Detectadas automáticamente a partir de los datos del periodo.</p>
+      <div class="action-grid" id="action-items-grid"></div>
+    </section>
+
+    <!-- CTA band -->
+    <section class="cta-band">
+      <h3>¿Quieres profundizar en lo que dice tu audiencia?</h3>
+      <p>Claude AI analizó los comentarios y detectó los temas, preguntas e ideas de contenido más recurrentes.</p>
+      <button class="btn btn-primary" onclick="document.querySelector('[data-tab=insights]').click()">Ver Insights de Contenido →</button>
+    </section>
+
+  </section>
+
+  <!-- ============================================================
+       TAB: SENTIMIENTO
+       ============================================================ -->
+  <section id="tab-sentimiento" class="tab-content">
+
+    <div class="hero">
+      <div class="hero-meta">Voz de la audiencia</div>
+      <h2 id="sentiment-narrative">Cargando análisis de sentimiento...</h2>
+      <p class="lede">Cada comentario se clasifica con análisis de palabras clave y categorías de intención. Filtra haciendo clic en los KPIs.</p>
+    </div>
+
+    <div class="kpi-grid kpi-4">
+      <div class="kpi-card kpi-positive kpi-filter" data-filter-type="sentiment" data-filter-value="positivo" onclick="toggleKpiFilter(this)">
+        <span class="kpi-label">Positivos <span class="info-icon" title="Comentarios con elogios, satisfacción, recomendaciones. Palabras clave: excelente, me encanta, recomiendo, etc.">i</span></span>
+        <span class="kpi-value" id="kpi-positive">0</span>
+        <span class="kpi-sub">Click para filtrar</span>
+      </div>
+      <div class="kpi-card kpi-negative kpi-filter" data-filter-type="sentiment" data-filter-value="negativo" onclick="toggleKpiFilter(this)">
+        <span class="kpi-label">Negativos <span class="info-icon" title="Comentarios con quejas o críticas. Palabras clave: caro, malo, no sirve, etc.">i</span></span>
+        <span class="kpi-value" id="kpi-negative">0</span>
+        <span class="kpi-sub">Click para filtrar</span>
+      </div>
+      <div class="kpi-card kpi-neutral kpi-filter" data-filter-type="sentiment" data-filter-value="neutro" onclick="toggleKpiFilter(this)">
+        <span class="kpi-label">Neutros <span class="info-icon" title="Tags a otros usuarios, preguntas generales o emojis sin contexto.">i</span></span>
+        <span class="kpi-value" id="kpi-neutral">0</span>
+        <span class="kpi-sub">Click para filtrar</span>
+      </div>
+      <div class="kpi-card kpi-card-accent kpi-filter" data-filter-type="category" data-filter-value="Interes de compra" onclick="toggleKpiFilter(this)">
+        <span class="kpi-label">Interés de Compra <span class="info-icon" title="Comentarios donde el usuario muestra intención: pregunta precio, cita o disponibilidad.">i</span></span>
+        <span class="kpi-value" id="kpi-purchase-intent">0%</span>
+        <span class="kpi-sub">Click para filtrar</span>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Distribución por categoría</h3>
+        <p class="chart-subtitle">Click en una barra para filtrar comentarios</p>
+        <div class="chart-canvas-wrap"><canvas id="chartCategories"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Sentimiento en el tiempo</h3>
+        <p class="chart-subtitle">Evolución diaria de los comentarios clasificados</p>
+        <div class="chart-canvas-wrap"><canvas id="chartSentimentTimeline"></canvas></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="posts-list">
+        <h3>Publicaciones</h3>
+        <div id="postsList" class="scrollable"></div>
+      </div>
+      <div class="comments-panel">
+        <h3>Comentarios <span id="commentsCount" class="badge">0</span></h3>
+        <div class="filter-row">
+          <select id="filterSentiment" onchange="loadComments()">
+            <option value="">Todos los sentimientos</option>
+            <option value="positivo">Positivo</option>
+            <option value="negativo">Negativo</option>
+            <option value="neutro">Neutro</option>
+          </select>
+          <select id="filterCategory" onchange="loadComments()">
+            <option value="">Todas las categorías</option>
+            <option value="Interes de compra">Interés de compra</option>
+            <option value="Preguntas">Preguntas</option>
+            <option value="Elogios">Elogios</option>
+            <option value="Quejas">Quejas</option>
+            <option value="Sugerencias">Sugerencias</option>
+            <option value="Spam">Spam</option>
+            <option value="General">General</option>
+          </select>
+        </div>
+        <div id="commentsList" class="scrollable"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TAB: ADS PERFORMANCE
+       ============================================================ -->
+  <section id="tab-ads" class="tab-content">
+
+    <div class="hero">
+      <div class="hero-meta">Performance pagado</div>
+      <h2 id="ads-narrative">Cargando métricas de campañas...</h2>
+      <p class="lede">Datos directos de Meta Marketing API. Las cifras se sincronizan cada hora.</p>
+    </div>
+
+    <div class="kpi-grid kpi-6">
+      <div class="kpi-card">
+        <span class="kpi-label">Inversión</span>
+        <span class="kpi-value" id="ads-spend">$0</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Alcance</span>
+        <span class="kpi-value" id="ads-reach">0</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Impresiones</span>
+        <span class="kpi-value" id="ads-impressions">0</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Clics Salientes</span>
+        <span class="kpi-value" id="ads-clicks">0</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">CTR <span class="info-icon" title="Click-Through Rate. Benchmark Meta: 0.9%-1.5% bueno, &gt;2% excelente.">i</span></span>
+        <span class="kpi-value" id="ads-ctr">0%</span>
+        <span class="kpi-sub" id="ads-ctr-vs">--</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Costo por Click</span>
+        <span class="kpi-value" id="ads-cpr">$0</span>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Inversión diaria</h3>
+        <p class="chart-subtitle">USD invertidos cada día</p>
+        <div class="chart-canvas-wrap"><canvas id="chartDailySpend"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>CPC diario</h3>
+        <p class="chart-subtitle">Tendencia del costo por clic</p>
+        <div class="chart-canvas-wrap"><canvas id="chartDailyCpc"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-card full-width">
+      <h3>Alcance vs impresiones</h3>
+      <p class="chart-subtitle">Cuando ambas líneas se separan, una misma persona ve el anuncio múltiples veces (frecuencia alta = saturación)</p>
+      <div class="chart-canvas-wrap tall"><canvas id="chartReachImpressions"></canvas></div>
+    </div>
+
+    <div class="table-section">
+      <h3>Campañas activas</h3>
+      <table id="campaignsTable" class="data-table">
+        <thead>
+          <tr>
+            <th>Campaña</th><th>Estado</th><th>Inversión</th><th>Alcance</th>
+            <th>Impresiones</th><th>Clics</th><th>CPC</th><th>CTR</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       TAB: COMPARATIVO
+       ============================================================ -->
+  <section id="tab-comparativo" class="tab-content">
+
+    <div class="hero">
+      <div class="hero-meta">Comparativo de creativos</div>
+      <h2>Qué creativo está ganando, cuál optimizar y cuál pausar.</h2>
+      <p class="lede">Anuncios agrupados por nombre de creativo. Cada tarjeta incluye una recomendación basada en CPC vs media, CTR y frecuencia.</p>
+    </div>
+
+    <div class="sort-controls">
+      <span>Ordenar por:</span>
+      <button class="sort-btn active" data-sort="link_clicks">Más Clics</button>
+      <button class="sort-btn" data-sort="reach">Mayor Alcance</button>
+      <button class="sort-btn" data-sort="cpc">Menor CPC</button>
+      <button class="sort-btn" data-sort="video_3s_views">Retención 3s</button>
+      <button class="sort-btn" data-sort="video_thruplay">Retención 15s</button>
+      <button class="sort-btn" data-sort="video_completions">Vistas Completas</button>
+    </div>
+
+    <div class="chart-card full-width">
+      <h3>Comparativa de top anuncios</h3>
+      <p class="chart-subtitle">Métrica activa según el orden seleccionado</p>
+      <div class="chart-canvas-wrap tall"><canvas id="chartAdsComparison"></canvas></div>
+    </div>
+
+    <div class="ads-grid" id="adsGrid"></div>
+  </section>
+
+  <!-- ============================================================
+       TAB: INSIGHTS DE CONTENIDO
+       ============================================================ -->
+  <section id="tab-insights" class="tab-content">
+
+    <div class="insights-header">
+      <div>
+        <h2 class="insights-title">Insights de contenido</h2>
+        <p class="insights-subtitle" id="insightsSubtitle">Análisis inteligente de comentarios con Claude AI</p>
+      </div>
+      <button class="btn-sync" id="btnRegenerateInsights" onclick="regenerateInsights()">
+        <span class="sync-icon">✦</span> Regenerar Análisis
+      </button>
+    </div>
+
+    <div id="insightsContent">
+      <div class="empty-state">
+        <div class="icon">⏳</div>
+        <p>Cargando análisis...</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer class="app-footer">
+    <div class="footer-brand">Dashboard interno</div>
+    <div>Datos cada hora · Insights AI diarios 6:00 AM Panamá</div>
+  </footer>
+
+  <script src="app.js?v=6"></script>
+</body>
+</html>
