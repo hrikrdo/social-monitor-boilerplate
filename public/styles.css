@@ -458,6 +458,108 @@ h1, h2, h3, h4 {
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 /* ============================================================================
+   DATE FILTER BAR
+   ============================================================================ */
+.date-filter-bar {
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--hairline);
+}
+.date-filter-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--sm) var(--xxl);
+  display: flex;
+  align-items: center;
+  gap: var(--md);
+  flex-wrap: wrap;
+}
+.date-filter-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.date-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.date-preset {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--r-pill);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.date-preset:hover {
+  color: var(--ink);
+  background: var(--canvas);
+}
+.date-preset.active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.date-custom-range {
+  display: flex;
+  align-items: center;
+  gap: var(--xs);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: 4px 8px;
+}
+.date-custom-range[hidden] { display: none !important; }
+.date-custom-range input[type="date"] {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  outline: none;
+}
+.date-custom-range span { color: var(--muted); font-size: 12px; }
+.btn-apply {
+  background: var(--ink);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.btn-apply:hover { background: var(--ink-active); }
+.date-current {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.date-current strong { color: var(--ink); font-weight: 600; }
+
+[data-theme="dark"] .date-preset.active {
+  background: var(--glasscare-green);
+  color: #062a10;
+  border-color: var(--glasscare-green);
+}
+[data-theme="dark"] .btn-apply {
+  background: var(--glasscare-green);
+  color: #062a10;
+}
+
+@media (max-width: 768px) {
+  .date-filter-inner { padding: var(--sm) var(--lg); }
+  .date-current { width: 100%; margin-left: 0; }
+}
+
+/* ============================================================================
    TABS
    ============================================================================ */
 .tabs {

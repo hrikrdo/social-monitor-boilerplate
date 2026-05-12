@@ -81,7 +81,8 @@ async function runSync() {
 // Dashboard overview
 app.get('/api/dashboard', (req, res) => {
   try {
-    const overview = db.getDashboardOverview();
+    const { from, to } = req.query;
+    const overview = db.getDashboardOverview(from, to);
     const lastSync = db.getLastSyncTime();
     res.json({ ...overview, lastSync, isSyncing });
   } catch (err) {
@@ -101,8 +102,8 @@ app.get('/api/posts', (req, res) => {
 // Comments
 app.get('/api/comments', (req, res) => {
   try {
-    const { post_id, sentiment, category } = req.query;
-    res.json(db.getComments(post_id, sentiment, category));
+    const { post_id, sentiment, category, from, to } = req.query;
+    res.json(db.getComments(post_id, sentiment, category, from, to));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -111,7 +112,8 @@ app.get('/api/comments', (req, res) => {
 // Campaigns
 app.get('/api/campaigns', (req, res) => {
   try {
-    res.json(db.getCampaigns());
+    const { from, to } = req.query;
+    res.json(db.getCampaigns(from, to));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -130,8 +132,8 @@ app.get('/api/ads', (req, res) => {
 // Ads grouped by creative name
 app.get('/api/ads-grouped', (req, res) => {
   try {
-    const { sort } = req.query;
-    res.json(db.getAdsGrouped(sort));
+    const { sort, from, to } = req.query;
+    res.json(db.getAdsGrouped(sort, from, to));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -140,8 +142,8 @@ app.get('/api/ads-grouped', (req, res) => {
 // Daily insights
 app.get('/api/daily-insights', (req, res) => {
   try {
-    const { type } = req.query;
-    res.json(db.getDailyInsights(type || 'campaign'));
+    const { type, from, to } = req.query;
+    res.json(db.getDailyInsights(type || 'campaign', from, to));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,7 +152,8 @@ app.get('/api/daily-insights', (req, res) => {
 // Sentiment timeline
 app.get('/api/sentiment-timeline', (req, res) => {
   try {
-    res.json(db.getSentimentTimeline());
+    const { from, to } = req.query;
+    res.json(db.getSentimentTimeline(from, to));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -11,6 +11,88 @@ let activeKpiFilter = null;
 let lastDashboardData = null;
 let clientConfig = null;
 
+// Date filter state — initialized to last 30 days
+let dateFilter = { preset: '30d', from: null, to: null };
+
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+function daysAgoISO(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+function startOfMonthISO(offset = 0) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset, 1);
+  return d.toISOString().slice(0, 10);
+}
+function endOfMonthISO(offset = 0) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset + 1, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function resolveDateRange(preset, customFrom, customTo) {
+  const today = todayISO();
+  switch (preset) {
+    case 'today':      return { from: today, to: today };
+    case '7d':         return { from: daysAgoISO(6), to: today };
+    case '14d':        return { from: daysAgoISO(13), to: today };
+    case '30d':        return { from: daysAgoISO(29), to: today };
+    case 'thisMonth':  return { from: startOfMonthISO(0), to: today };
+    case 'lastMonth':  return { from: startOfMonthISO(-1), to: endOfMonthISO(-1) };
+    case 'all':        return { from: null, to: null };
+    case 'custom':     return { from: customFrom, to: customTo };
+    default:           return { from: daysAgoISO(29), to: today };
+  }
+}
+
+function applyDateFilter(preset, customFrom, customTo) {
+  const range = resolveDateRange(preset, customFrom, customTo);
+  dateFilter = { preset, ...range };
+  // Update preset buttons UI
+  document.querySelectorAll('.date-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.preset === preset);
+  });
+  // Show/hide custom range UI
+  document.getElementById('dateCustomRange').hidden = preset !== 'custom';
+  // Update label
+  const labelEl = document.getElementById('dateCurrentLabel');
+  if (range.from && range.to) {
+    labelEl.innerHTML = `<strong>${formatHumanDate(range.from)}</strong> → <strong>${formatHumanDate(range.to)}</strong>`;
+  } else {
+    labelEl.innerHTML = '<strong>Todo el histórico</strong>';
+  }
+  // Persist
+  try { localStorage.setItem('date-filter', JSON.stringify(dateFilter)); } catch (e) {}
+  // Reload all data
+  loadDashboard();
+}
+
+function formatHumanDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} ${months[parseInt(m)-1]}`;
+}
+
+function dateQuery() {
+  // Build query string fragment from current filter (or empty if 'all')
+  if (!dateFilter.from && !dateFilter.to) return '';
+  const parts = [];
+  if (dateFilter.from) parts.push(`from=${dateFilter.from}`);
+  if (dateFilter.to)   parts.push(`to=${dateFilter.to}`);
+  return parts.join('&');
+}
+
+function withDates(path) {
+  const q = dateQuery();
+  if (!q) return path;
+  return path + (path.includes('?') ? '&' : '?') + q;
+}
+
 // --- Load client config & inject branding ---
 async function loadClientConfig() {
   try {
@@ -139,9 +221,9 @@ async function api(path) { const res = await fetch(path); return res.json(); }
 // ============================================================================
 async function loadDashboard() {
   const [overview, daily, timeline] = await Promise.all([
-    api('/api/dashboard'),
-    api('/api/daily-insights?type=campaign'),
-    api('/api/sentiment-timeline')
+    api(withDates('/api/dashboard')),
+    api(withDates('/api/daily-insights?type=campaign')),
+    api(withDates('/api/sentiment-timeline'))
   ]);
 
   lastDashboardData = { overview, daily, timeline };
@@ -770,6 +852,9 @@ async function loadComments() {
   if (sentiment) params.set('sentiment', sentiment);
   if (category) params.set('category', category);
 
+  // Append date range if active
+  if (dateFilter.from) params.set('from', dateFilter.from);
+  if (dateFilter.to) params.set('to', dateFilter.to);
   const comments = await api('/api/comments?' + params.toString());
   el('commentsCount').textContent = comments.length;
   const container = el('commentsList');
@@ -793,7 +878,7 @@ async function loadComments() {
 // CAMPAIGNS TABLE
 // ============================================================================
 async function loadCampaigns() {
-  const campaigns = await api('/api/campaigns');
+  const campaigns = await api(withDates('/api/campaigns'));
   const tbody = document.querySelector('#campaignsTable tbody');
   if (campaigns.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">Sin campañas. Sincroniza para cargar datos.</td></tr>';
@@ -817,7 +902,7 @@ async function loadCampaigns() {
 // ADS COMPARATIVO with recommendations
 // ============================================================================
 async function loadAds() {
-  const ads = await api('/api/ads-grouped?sort=' + currentAdsSort);
+  const ads = await api(withDates('/api/ads-grouped?sort=' + currentAdsSort));
   const grid = el('adsGrid');
   if (ads.length === 0) {
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="icon">📊</div><p>Sin anuncios. Sincroniza para cargar datos.</p></div>';
@@ -1124,7 +1209,7 @@ async function regenerateInsights() {
 // BEST AD (signature card)
 // ============================================================================
 async function loadBestAd() {
-  const ads = await api('/api/ads-grouped?sort=link_clicks');
+  const ads = await api(withDates('/api/ads-grouped?sort=link_clicks'));
   if (ads.length > 0) {
     const best = ads[0];
     el('kpi-best-ad').textContent = best.name;
@@ -1223,5 +1308,44 @@ function escapeHtml(str) {
 // Auto refresh every 60s
 setInterval(() => { loadDashboard(); }, 60000);
 
-// Init: load client branding first, then dashboard data
-loadClientConfig().then(() => loadDashboard());
+// ============================================================================
+// DATE FILTER UI WIRE-UP
+// ============================================================================
+document.querySelectorAll('.date-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const preset = btn.dataset.preset;
+    if (preset === 'custom') {
+      // Default custom inputs to current range
+      const todayStr = todayISO();
+      el('dateFrom').value = dateFilter.from || daysAgoISO(29);
+      el('dateTo').value = dateFilter.to || todayStr;
+      applyDateFilter('custom', el('dateFrom').value, el('dateTo').value);
+    } else {
+      applyDateFilter(preset);
+    }
+  });
+});
+
+el('dateApply').addEventListener('click', () => {
+  const f = el('dateFrom').value;
+  const t = el('dateTo').value;
+  if (!f || !t) { alert('Selecciona ambas fechas'); return; }
+  if (f > t) { alert('La fecha "desde" debe ser anterior a "hasta"'); return; }
+  applyDateFilter('custom', f, t);
+});
+
+// Restore saved filter from localStorage
+function restoreDateFilter() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('date-filter') || 'null');
+    if (saved && saved.preset) {
+      applyDateFilter(saved.preset, saved.from, saved.to);
+      return;
+    }
+  } catch (e) {}
+  // Default: last 30 days
+  applyDateFilter('30d');
+}
+
+// Init: load client branding first, restore date filter, then dashboard
+loadClientConfig().then(() => restoreDateFilter());

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script>
     // Apply theme before render to prevent flash
@@ -48,6 +48,32 @@
       </div>
     </div>
   </header>
+
+  <!-- ============================================================
+       DATE RANGE FILTER (global, applies to all tabs except Insights AI)
+       ============================================================ -->
+  <div class="date-filter-bar">
+    <div class="date-filter-inner">
+      <span class="date-filter-label">Periodo:</span>
+      <div class="date-presets" id="datePresets">
+        <button class="date-preset" data-preset="today">Hoy</button>
+        <button class="date-preset" data-preset="7d">Últimos 7d</button>
+        <button class="date-preset" data-preset="14d">Últimos 14d</button>
+        <button class="date-preset active" data-preset="30d">Últimos 30d</button>
+        <button class="date-preset" data-preset="thisMonth">Este mes</button>
+        <button class="date-preset" data-preset="lastMonth">Mes anterior</button>
+        <button class="date-preset" data-preset="all">Todo</button>
+        <button class="date-preset" data-preset="custom">Personalizado…</button>
+      </div>
+      <div class="date-custom-range" id="dateCustomRange" hidden>
+        <input type="date" id="dateFrom" />
+        <span>→</span>
+        <input type="date" id="dateTo" />
+        <button class="btn-apply" id="dateApply">Aplicar</button>
+      </div>
+      <div class="date-current" id="dateCurrentLabel"></div>
+    </div>
+  </div>
 
   <!-- ============================================================
        TABS
@@ -418,6 +444,6 @@
     <div>Datos cada hora · Insights AI diarios 6:00 AM Panamá</div>
   </footer>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

@@ -50,6 +50,15 @@ async function getCampaignDailyInsights(campaignId) {
   return fetchAllPages(url);
 }
 
+// Get today's partial insights for a campaign (Meta may not include current day in
+// date_preset=maximum + time_increment=1 until the day is complete; this fills the gap).
+async function getCampaignTodayInsights(campaignId) {
+  const fields = 'spend,reach,impressions,clicks,actions,cost_per_action_type,date_start,date_stop';
+  const url = `${API_BASE}/${campaignId}/insights?fields=${fields}&date_preset=today&${tokenParam()}`;
+  const data = await fetchJson(url);
+  return data.data?.[0] || null;
+}
+
 // Get all ads for a campaign
 async function getAdsForCampaign(campaignId) {
   const url = `${API_BASE}/${campaignId}/ads?fields=id,name,status,adset_name,creative{thumbnail_url,effective_object_story_id}&limit=100&${tokenParam()}`;
@@ -118,7 +127,7 @@ async function syncAllAds(db) {
         ctr: parseFloat(cInsights?.ctr || 0)
       });
 
-      // Daily insights for campaign
+      // Daily insights for campaign (historical, via time_increment=1)
       try {
         const dailyData = await getCampaignDailyInsights(campaign.id);
         for (const day of dailyData) {
@@ -139,6 +148,30 @@ async function syncAllAds(db) {
         }
       } catch (err) {
         console.error(`[Ads] Error fetching daily insights for campaign ${campaign.name}:`, err.message);
+      }
+
+      // Today's partial insights — Meta's time_increment=1 historical fetch may exclude
+      // the in-progress day. Fetch it explicitly with date_preset=today.
+      try {
+        const today = await getCampaignTodayInsights(campaign.id);
+        if (today && today.date_start) {
+          const todayLinkClicks = extractLinkClicks(today.actions);
+          const todayCpc = extractCostPerLinkClick(today.cost_per_action_type);
+          db.upsertDailyInsight({
+            entity_type: 'campaign',
+            entity_id: campaign.id,
+            date: today.date_start,
+            spend: parseFloat(today.spend || 0),
+            reach: parseInt(today.reach || 0, 10),
+            impressions: parseInt(today.impressions || 0, 10),
+            link_clicks: todayLinkClicks,
+            cpc: todayCpc,
+            video_3s_views: 0,
+            video_completions: 0
+          });
+        }
+      } catch (err) {
+        console.error(`[Ads] Error fetching today's insights for campaign ${campaign.name}:`, err.message);
       }
 
       // Ads for this campaign

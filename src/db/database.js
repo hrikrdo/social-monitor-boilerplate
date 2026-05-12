@@ -205,26 +205,70 @@ const completeSync = (id, count, error = null) => {
 };
 
 // Queries for Dashboard
-const getDashboardOverview = () => {
-  const d = getDb();
-  const totalComments = d.prepare('SELECT COUNT(*) as count FROM comments').get();
-  const sentimentDist = d.prepare(`
-    SELECT sentiment, COUNT(*) as count FROM comments WHERE sentiment IS NOT NULL GROUP BY sentiment
-  `).all();
-  const categoryDist = d.prepare(`
-    SELECT category, COUNT(*) as count FROM comments WHERE category IS NOT NULL GROUP BY category
-  `).all();
-  const adsTotals = d.prepare(`
-    SELECT COALESCE(SUM(spend),0) as total_spend, COALESCE(SUM(reach),0) as total_reach,
-           COALESCE(SUM(impressions),0) as total_impressions, COALESCE(SUM(link_clicks),0) as total_link_clicks
-    FROM ads
-  `).get();
-  const avgCpc = d.prepare(`
-    SELECT CASE WHEN SUM(link_clicks) > 0 THEN SUM(spend)/SUM(link_clicks) ELSE 0 END as avg_cpc FROM ads
-  `).get();
-  const lastSync = d.prepare(`SELECT * FROM sync_log ORDER BY id DESC LIMIT 1`).get();
+// Build date range WHERE clause helper for daily_insights / comments
+function rangeClause(dateCol, from, to) {
+  if (!from && !to) return { sql: '', params: {} };
+  const parts = [];
+  const params = {};
+  if (from) { parts.push(`${dateCol} >= @dateFrom`); params.dateFrom = from; }
+  if (to)   { parts.push(`${dateCol} <= @dateTo`);   params.dateTo = to; }
+  return { sql: ' AND ' + parts.join(' AND '), params };
+}
 
-  return { totalComments: totalComments.count, sentimentDist, categoryDist, adsTotals, avgCpc: avgCpc.avg_cpc, lastSync };
+const getDashboardOverview = (from, to) => {
+  const d = getDb();
+  const hasRange = !!(from || to);
+
+  // Comments — filter by created_at date when range provided
+  const cmtRange = rangeClause("substr(created_at, 1, 10)", from, to);
+  const totalComments = d.prepare(`SELECT COUNT(*) as count FROM comments WHERE 1=1${cmtRange.sql}`).get(cmtRange.params);
+  const sentimentDist = d.prepare(`
+    SELECT sentiment, COUNT(*) as count FROM comments
+    WHERE sentiment IS NOT NULL${cmtRange.sql}
+    GROUP BY sentiment
+  `).all(cmtRange.params);
+  const categoryDist = d.prepare(`
+    SELECT category, COUNT(*) as count FROM comments
+    WHERE category IS NOT NULL${cmtRange.sql}
+    GROUP BY category
+  `).all(cmtRange.params);
+
+  // Ads totals — when range provided, aggregate from daily_insights; else from ads table
+  let adsTotals, avgCpc;
+  if (hasRange) {
+    const r = rangeClause('date', from, to);
+    adsTotals = d.prepare(`
+      SELECT COALESCE(SUM(spend),0) as total_spend, COALESCE(SUM(reach),0) as total_reach,
+             COALESCE(SUM(impressions),0) as total_impressions, COALESCE(SUM(link_clicks),0) as total_link_clicks
+      FROM daily_insights WHERE entity_type = 'campaign'${r.sql}
+    `).get(r.params);
+    avgCpc = d.prepare(`
+      SELECT CASE WHEN SUM(link_clicks) > 0 THEN SUM(spend)/SUM(link_clicks) ELSE 0 END as avg_cpc
+      FROM daily_insights WHERE entity_type = 'campaign'${r.sql}
+    `).get(r.params);
+  } else {
+    adsTotals = d.prepare(`
+      SELECT COALESCE(SUM(spend),0) as total_spend, COALESCE(SUM(reach),0) as total_reach,
+             COALESCE(SUM(impressions),0) as total_impressions, COALESCE(SUM(link_clicks),0) as total_link_clicks
+      FROM ads
+    `).get();
+    avgCpc = d.prepare(`
+      SELECT CASE WHEN SUM(link_clicks) > 0 THEN SUM(spend)/SUM(link_clicks) ELSE 0 END as avg_cpc FROM ads
+    `).get();
+  }
+
+  const lastSync = d.prepare(`SELECT * FROM sync_log ORDER BY id DESC LIMIT 1`).get();
+  // First and last data dates for UI hints
+  const dataRange = d.prepare(`SELECT MIN(date) AS minDate, MAX(date) AS maxDate FROM daily_insights`).get();
+
+  return {
+    totalComments: totalComments.count,
+    sentimentDist, categoryDist, adsTotals,
+    avgCpc: avgCpc.avg_cpc,
+    lastSync,
+    dataRange,
+    appliedRange: hasRange ? { from: from || null, to: to || null } : null
+  };
 };
 
 const getPosts = () => {
@@ -241,18 +285,39 @@ const getPosts = () => {
   `).all();
 };
 
-const getComments = (postId, sentiment, category) => {
+const getComments = (postId, sentiment, category, from, to) => {
   let sql = 'SELECT * FROM comments WHERE 1=1';
   const params = {};
   if (postId) { sql += ' AND post_id = @postId'; params.postId = postId; }
   if (sentiment) { sql += ' AND sentiment = @sentiment'; params.sentiment = sentiment; }
   if (category) { sql += ' AND category = @category'; params.category = category; }
+  if (from) { sql += ' AND substr(created_at, 1, 10) >= @dateFrom'; params.dateFrom = from; }
+  if (to)   { sql += ' AND substr(created_at, 1, 10) <= @dateTo';   params.dateTo = to; }
   sql += ' ORDER BY created_at DESC LIMIT 500';
   return getDb().prepare(sql).all(params);
 };
 
-const getCampaigns = () => {
-  return getDb().prepare('SELECT * FROM campaigns ORDER BY spend DESC').all();
+const getCampaigns = (from, to) => {
+  if (!from && !to) {
+    return getDb().prepare('SELECT * FROM campaigns ORDER BY spend DESC').all();
+  }
+  // Aggregate from daily_insights for the date range, joined to campaigns for metadata
+  const r = rangeClause('di.date', from, to);
+  return getDb().prepare(`
+    SELECT
+      c.campaign_id, c.name, c.status, c.objective,
+      COALESCE(SUM(di.spend), 0) as spend,
+      COALESCE(SUM(di.reach), 0) as reach,
+      COALESCE(SUM(di.impressions), 0) as impressions,
+      COALESCE(SUM(di.link_clicks), 0) as link_clicks,
+      CASE WHEN SUM(di.link_clicks) > 0 THEN SUM(di.spend) / SUM(di.link_clicks) ELSE 0 END as cpc,
+      CASE WHEN SUM(di.impressions) > 0 THEN CAST(SUM(di.link_clicks) AS REAL) / SUM(di.impressions) * 100 ELSE 0 END as ctr
+    FROM campaigns c
+    LEFT JOIN daily_insights di ON di.entity_type = 'campaign' AND di.entity_id = c.campaign_id${r.sql}
+    GROUP BY c.campaign_id
+    HAVING SUM(di.spend) > 0
+    ORDER BY spend DESC
+  `).all(r.params);
 };
 
 const getAds = (sortBy = 'link_clicks') => {
@@ -263,48 +328,80 @@ const getAds = (sortBy = 'link_clicks') => {
 };
 
 // Ads grouped by creative name (same name = same creative)
-const getAdsGrouped = (sortBy = 'link_clicks') => {
+// When date range is provided, aggregate from daily_insights joined to ads (per-ad daily data)
+const getAdsGrouped = (sortBy = 'link_clicks', from, to) => {
   const validSorts = ['link_clicks', 'reach', 'cpc', 'spend', 'video_3s_views', 'video_thruplay', 'video_completions', 'ctr', 'impressions'];
   const sort = validSorts.includes(sortBy) ? sortBy : 'link_clicks';
   const dir = sort === 'cpc' ? 'ASC' : 'DESC';
+
+  if (!from && !to) {
+    // No range — use ads table (cumulative)
+    return getDb().prepare(`
+      SELECT
+        name,
+        COUNT(*) as ad_count,
+        SUM(spend) as spend,
+        SUM(reach) as reach,
+        SUM(impressions) as impressions,
+        SUM(link_clicks) as link_clicks,
+        CASE WHEN SUM(link_clicks) > 0 THEN SUM(spend) / SUM(link_clicks) ELSE 0 END as cpc,
+        CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(link_clicks) AS REAL) / SUM(impressions) * 100 ELSE 0 END as ctr,
+        AVG(frequency) as frequency,
+        SUM(video_3s_views) as video_3s_views,
+        SUM(video_thruplay) as video_thruplay,
+        SUM(video_completions) as video_completions,
+        GROUP_CONCAT(DISTINCT campaign_id) as campaign_ids,
+        GROUP_CONCAT(DISTINCT adset_name) as adset_names
+      FROM ads
+      GROUP BY name
+      ORDER BY ${sort} ${dir}
+    `).all();
+  }
+
+  // With range — aggregate per-ad daily data from daily_insights, joined to ads for the name
+  const r = rangeClause('di.date', from, to);
   return getDb().prepare(`
     SELECT
-      name,
-      COUNT(*) as ad_count,
-      SUM(spend) as spend,
-      SUM(reach) as reach,
-      SUM(impressions) as impressions,
-      SUM(link_clicks) as link_clicks,
-      CASE WHEN SUM(link_clicks) > 0 THEN SUM(spend) / SUM(link_clicks) ELSE 0 END as cpc,
-      CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(link_clicks) AS REAL) / SUM(impressions) * 100 ELSE 0 END as ctr,
-      AVG(frequency) as frequency,
-      SUM(video_3s_views) as video_3s_views,
-      SUM(video_thruplay) as video_thruplay,
-      SUM(video_completions) as video_completions,
-      GROUP_CONCAT(DISTINCT campaign_id) as campaign_ids,
-      GROUP_CONCAT(DISTINCT adset_name) as adset_names
-    FROM ads
-    GROUP BY name
+      a.name,
+      COUNT(DISTINCT a.id) as ad_count,
+      COALESCE(SUM(di.spend), 0) as spend,
+      COALESCE(SUM(di.reach), 0) as reach,
+      COALESCE(SUM(di.impressions), 0) as impressions,
+      COALESCE(SUM(di.link_clicks), 0) as link_clicks,
+      CASE WHEN SUM(di.link_clicks) > 0 THEN SUM(di.spend) / SUM(di.link_clicks) ELSE 0 END as cpc,
+      CASE WHEN SUM(di.impressions) > 0 THEN CAST(SUM(di.link_clicks) AS REAL) / SUM(di.impressions) * 100 ELSE 0 END as ctr,
+      AVG(a.frequency) as frequency,
+      COALESCE(SUM(di.video_3s_views), 0) as video_3s_views,
+      0 as video_thruplay,
+      COALESCE(SUM(di.video_completions), 0) as video_completions,
+      GROUP_CONCAT(DISTINCT a.campaign_id) as campaign_ids,
+      GROUP_CONCAT(DISTINCT a.adset_name) as adset_names
+    FROM ads a
+    LEFT JOIN daily_insights di ON di.entity_type = 'ad' AND di.entity_id = a.id${r.sql}
+    GROUP BY a.name
+    HAVING SUM(di.spend) > 0
     ORDER BY ${sort} ${dir}
-  `).all();
+  `).all(r.params);
 };
 
-const getDailyInsights = (entityType = 'campaign') => {
+const getDailyInsights = (entityType = 'campaign', from, to) => {
+  const r = rangeClause('date', from, to);
   return getDb().prepare(`
     SELECT date, SUM(spend) as spend, SUM(reach) as reach, SUM(impressions) as impressions,
            SUM(link_clicks) as link_clicks,
            CASE WHEN SUM(link_clicks)>0 THEN SUM(spend)/SUM(link_clicks) ELSE 0 END as cpc
-    FROM daily_insights WHERE entity_type = ?
+    FROM daily_insights WHERE entity_type = @entityType${r.sql}
     GROUP BY date ORDER BY date
-  `).all(entityType);
+  `).all({ entityType, ...r.params });
 };
 
-const getSentimentTimeline = () => {
+const getSentimentTimeline = (from, to) => {
+  const r = rangeClause("substr(created_at, 1, 10)", from, to);
   return getDb().prepare(`
     SELECT substr(created_at, 1, 10) as date, sentiment, COUNT(*) as count
-    FROM comments WHERE sentiment IS NOT NULL AND created_at IS NOT NULL
+    FROM comments WHERE sentiment IS NOT NULL AND created_at IS NOT NULL${r.sql}
     GROUP BY substr(created_at, 1, 10), sentiment ORDER BY date
-  `).all();
+  `).all(r.params);
 };
 
 const getLastSyncTime = () => {
